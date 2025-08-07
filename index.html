@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Prompt Generator</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
       margin: 0;
@@ -26,7 +26,8 @@
 
     .list-buttons,
     .timing-buttons,
-    .custom-time {
+    .custom-time,
+    .toggle-buttons {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
@@ -52,11 +53,23 @@
       margin: 5px 0;
     }
 
+    /* Gesture area sits under the controls; we handle drag here */
+    #gestureArea {
+      width: 100%;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      touch-action: none; /* allow custom touch gestures */
+      user-select: none;
+    }
+
     #output {
       font-size: 6vw;
       font-weight: bold;
       text-align: center;
-      margin: 30px 20px 10px;
+      margin: 0 20px;
       word-break: break-word;
     }
 
@@ -113,14 +126,38 @@
       margin-left: 5px;
     }
 
-    h3 {
-      margin-top: 0;
+    /* Volume HUD */
+    #volumeHUD {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(20,20,20,0.9);
+      border: 1px solid #444;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      pointer-events: none;
+      z-index: 1100;
     }
+    #volumeHUD.show {
+      opacity: 1;
+    }
+
+    h3 { margin-top: 0; }
   </style>
 </head>
 <body>
 
   <div class="controls">
+
+    <div class="toggle-buttons">
+      <button id="soundToggle" onclick="toggleSound()">🔊 Sound: ON</button>
+      <button id="autoToggle" onclick="toggleAuto()">▶️ Auto: OFF</button>
+    </div>
+
     <div class="list-buttons">
       <button onclick="switchList('A')" id="btnA">List A</button>
       <button onclick="switchList('B')" id="btnB">List B</button>
@@ -147,7 +184,12 @@
     </div>
   </div>
 
-  <div id="output">Your prompt will appear here.</div>
+  <div id="gestureArea">
+    <div id="output">Your prompt will appear here.</div>
+  </div>
+
+  <!-- Volume HUD -->
+  <div id="volumeHUD">Volume: 100%</div>
 
   <!-- Modal -->
   <div id="modal">
@@ -167,18 +209,29 @@
     let timer = null;
     let minTime = 10;
     let maxTime = 20;
-    let activeTimeButton = null;
+    let soundOn = true;
+    let autoPlay = false;
+    let volume = 1.0; // 0.0 - 1.0
 
     const output = document.getElementById('output');
-    const promptEditor = document.getElementById('promptEditor');
-    const modal = document.getElementById('modal');
-    const modalListLabel = document.getElementById('modalListLabel');
+    const gestureArea = document.getElementById('gestureArea');
+    const volumeHUD = document.getElementById('volumeHUD');
 
-    function loadLists() {
+    function loadSettings() {
+      // lists
       for (let key of Object.keys(lists)) {
         const stored = localStorage.getItem('promptList_' + key);
         if (stored) lists[key] = JSON.parse(stored);
       }
+      // toggles
+      soundOn = localStorage.getItem('soundOn') !== 'false';
+      autoPlay = localStorage.getItem('autoPlay') === 'true';
+      // volume
+      const v = parseFloat(localStorage.getItem('volume'));
+      if (!isNaN(v)) volume = Math.min(1, Math.max(0, v));
+
+      updateSoundButton();
+      updateAutoButton();
     }
 
     function saveCurrentList() {
@@ -198,21 +251,23 @@
     }
 
     function generatePrompt() {
-      output.textContent = getRandomPrompt();
+      const prompt = getRandomPrompt();
+      output.textContent = prompt;
+      if (soundOn) speak(prompt);
     }
 
     function openModal() {
-      promptEditor.value = lists[currentList].join('\n');
-      modalListLabel.textContent = currentList;
-      modal.style.display = 'flex';
+      document.getElementById('promptEditor').value = lists[currentList].join('\n');
+      document.getElementById('modalListLabel').textContent = currentList;
+      document.getElementById('modal').style.display = 'flex';
     }
 
     function closeModal() {
-      modal.style.display = 'none';
+      document.getElementById('modal').style.display = 'none';
     }
 
     function savePrompts() {
-      lists[currentList] = promptEditor.value.trim().split('\n').map(x => x.trim()).filter(Boolean);
+      lists[currentList] = document.getElementById('promptEditor').value.trim().split('\n').map(x => x.trim()).filter(Boolean);
       saveCurrentList();
       closeModal();
       generatePrompt();
@@ -222,7 +277,7 @@
       minTime = min;
       maxTime = max;
       highlightTimerButton(`timeBtn${min}`);
-      startTimer();
+      if (autoPlay) startTimer();
     }
 
     function applyCustomTime() {
@@ -232,7 +287,7 @@
         minTime = min;
         maxTime = max;
         highlightTimerButton('customBtn');
-        startTimer();
+        if (autoPlay) startTimer();
       }
     }
 
@@ -247,14 +302,103 @@
       const delay = Math.floor(Math.random() * (maxTime - minTime + 1) + minTime) * 1000;
       timer = setTimeout(() => {
         generatePrompt();
-        startTimer();
+        if (autoPlay) startTimer();
       }, delay);
     }
 
-    window.addEventListener('keydown', generatePrompt);
-    document.body.addEventListener('click', generatePrompt);
+    function toggleSound() {
+      soundOn = !soundOn;
+      localStorage.setItem('soundOn', soundOn);
+      updateSoundButton();
+    }
 
-    loadLists();
+    function updateSoundButton() {
+      document.getElementById('soundToggle').textContent = soundOn ? "🔊 Sound: ON" : "🔇 Sound: OFF";
+    }
+
+    function toggleAuto() {
+      autoPlay = !autoPlay;
+      localStorage.setItem('autoPlay', autoPlay);
+      updateAutoButton();
+      if (autoPlay) startTimer();
+      else if (timer) clearTimeout(timer);
+    }
+
+    function updateAutoButton() {
+      document.getElementById('autoToggle').textContent = autoPlay ? "⏸ Auto: ON" : "▶️ Auto: OFF";
+    }
+
+    function speak(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.volume = volume; // use our gesture volume
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v =>
+        v.name.includes("Samantha") || v.name.includes("Alexa") || v.name.includes("Google US English")
+      );
+      if (preferred) utterance.voice = preferred;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utterance);
+    }
+
+    // Gesture-based volume control on the output area
+    let isDraggingVol = false;
+    let startY = 0;
+    let startVolume = volume;
+    let dragMoved = false;
+
+    function showVolumeHUD() {
+      volumeHUD.textContent = "Volume: " + Math.round(volume * 100) + "%";
+      volumeHUD.classList.add('show');
+      // Fade out after 700ms of inactivity
+      if (showVolumeHUD._t) clearTimeout(showVolumeHUD._t);
+      showVolumeHUD._t = setTimeout(() => volumeHUD.classList.remove('show'), 700);
+    }
+
+    gestureArea.addEventListener('pointerdown', (e) => {
+      // Only start volume drag if it begins in the gesture area (below buttons)
+      isDraggingVol = true;
+      dragMoved = false;
+      gestureArea.setPointerCapture(e.pointerId);
+      startY = e.clientY;
+      startVolume = volume;
+      showVolumeHUD();
+      e.preventDefault();
+    });
+
+    gestureArea.addEventListener('pointermove', (e) => {
+      if (!isDraggingVol) return;
+      const dy = startY - e.clientY; // up is positive
+      const sensitivity = 220; // px for full-range change
+      let newVol = startVolume + (dy / sensitivity);
+      newVol = Math.max(0, Math.min(1, newVol));
+      if (Math.abs(newVol - volume) > 0.001) {
+        volume = newVol;
+        localStorage.setItem('volume', volume.toFixed(3));
+        showVolumeHUD();
+        dragMoved = true;
+      }
+      e.preventDefault();
+    });
+
+    gestureArea.addEventListener('pointerup', (e) => {
+      if (!isDraggingVol) return;
+      isDraggingVol = false;
+      gestureArea.releasePointerCapture(e.pointerId);
+      // If it was a drag, suppress generating a prompt from this tap
+      if (!dragMoved) {
+        // treat as a tap to generate
+        generatePrompt();
+      }
+    });
+
+    // Keyboard space/any key to generate as well
+    window.addEventListener('keydown', (e) => {
+      generatePrompt();
+    });
+
+    // Initialize
+    loadSettings();
     switchList('A');
   </script>
 </body>
