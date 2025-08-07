@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-List Prompt Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: black;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #output {
+      font-size: 6vw;
+      font-weight: bold;
+      text-align: center;
+      margin-top: 20vh;
+      padding: 20px;
+      word-break: break-word;
+    }
+
+    .list-buttons,
+    .timing-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 10px;
+      justify-content: center;
+    }
+
+    button {
+      padding: 10px 15px;
+      font-size: 16px;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    button.active {
+      background: #0a84ff;
+    }
+
+    #editBtn {
+      margin: 10px;
+    }
+
+    #modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    #modalContent {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 500px;
+    }
+
+    #promptEditor {
+      width: 100%;
+      height: 300px;
+      background: #000;
+      color: #fff;
+      font-size: 16px;
+      padding: 10px;
+      border: 1px solid #666;
+    }
+
+    #modalButtons {
+      margin-top: 10px;
+      text-align: right;
+    }
+
+    input[type="number"] {
+      width: 60px;
+      margin: 0 5px;
+      text-align: center;
+      padding: 4px;
+    }
+
+    .custom-time {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      gap: 5px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="output">Your prompt will appear here.</div>
+
+  <div class="list-buttons">
+    <button onclick="switchList('A')" id="btnA">List A</button>
+    <button onclick="switchList('B')" id="btnB">List B</button>
+    <button onclick="switchList('C')" id="btnC">List C</button>
+    <button onclick="switchList('D')" id="btnD">List D</button>
+    <button onclick="switchList('E')" id="btnE">List E</button>
+  </div>
+
+  <button id="editBtn" onclick="openModal()">✏️ Edit Current List</button>
+
+  <div class="timing-buttons">
+    <button onclick="setTimer(10, 20)">10–20s</button>
+    <button onclick="setTimer(30, 60)">30–60s</button>
+    <button onclick="setTimer(90, 120)">90–120s</button>
+    <button onclick="setTimer(150, 300)">150–300s</button>
+  </div>
+
+  <div class="custom-time">
+    Custom:
+    <input type="number" id="minCustom" value="10" min="1">–
+    <input type="number" id="maxCustom" value="60" min="1">s
+    <button onclick="applyCustomTime()">Set</button>
+  </div>
+
+  <div id="modal">
+    <div id="modalContent">
+      <h3>Edit Prompts (List <span id="modalListLabel"></span>)</h3>
+      <textarea id="promptEditor"></textarea>
+      <div id="modalButtons">
+        <button onclick="closeModal()">Cancel</button>
+        <button onclick="savePrompts()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentList = 'A';
+    let lists = {
+      A: [],
+      B: [],
+      C: [],
+      D: [],
+      E: []
+    };
+
+    let timer = null;
+    let minTime = 10;
+    let maxTime = 20;
+
+    const output = document.getElementById('output');
+    const promptEditor = document.getElementById('promptEditor');
+    const modal = document.getElementById('modal');
+    const modalListLabel = document.getElementById('modalListLabel');
+
+    function loadLists() {
+      for (let key of Object.keys(lists)) {
+        const stored = localStorage.getItem('promptList_' + key);
+        if (stored) {
+          lists[key] = JSON.parse(stored);
+        }
+      }
+    }
+
+    function saveCurrentList() {
+      localStorage.setItem('promptList_' + currentList, JSON.stringify(lists[currentList]));
+    }
+
+    function switchList(letter) {
+      currentList = letter;
+      document.querySelectorAll('.list-buttons button').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('btn' + letter).classList.add('active');
+      generatePrompt();
+    }
+
+    function getRandomPrompt() {
+      const list = lists[currentList];
+      if (list.length === 0) return "No prompts in List " + currentList;
+      return list[Math.floor(Math.random() * list.length)];
+    }
+
+    function generatePrompt() {
+      const prompt = getRandomPrompt();
+      output.textContent = prompt;
+    }
+
+    function openModal() {
+      promptEditor.value = lists[currentList].join('\n');
+      modalListLabel.textContent = currentList;
+      modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+      modal.style.display = 'none';
+    }
+
+    function savePrompts() {
+      lists[currentList] = promptEditor.value.trim().split('\n').map(x => x.trim()).filter(Boolean);
+      saveCurrentList();
+      closeModal();
+      generatePrompt();
+    }
+
+    function setTimer(min, max) {
+      minTime = min;
+      maxTime = max;
+      startTimer();
+    }
+
+    function applyCustomTime() {
+      const min = parseInt(document.getElementById('minCustom').value, 10);
+      const max = parseInt(document.getElementById('maxCustom').value, 10);
+      if (min > 0 && max >= min) {
+        setTimer(min, max);
+      }
+    }
+
+    function startTimer() {
+      if (timer) clearTimeout(timer);
+      const delay = Math.floor(Math.random() * (maxTime - minTime + 1) + minTime) * 1000;
+      timer = setTimeout(() => {
+        generatePrompt();
+        startTimer();
+      }, delay);
+    }
+
+    window.addEventListener('keydown', generatePrompt);
+    document.body.addEventListener('click', generatePrompt);
+
+    loadLists();
+    switchList('A');
+  </script>
+</body>
+</html>
